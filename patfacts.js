@@ -1,6 +1,9 @@
 'use strict';
+const AWS = require("aws-sdk");
+AWS.config.update({ region: process.env.AWS_DEFAULT_REGION });
+const dynamoDb = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
 
-const factArray = [
+const defaultFactArray = [
   "[belching sound followed by silent fart that melts your skin]...That was you.",
   "Shoving an 8 inch dildo directly up your asshole will result in said dildo replacing your actual penis.",
   "You cannot go outside now, for it is currently gang-time.",
@@ -31,19 +34,100 @@ const factArray = [
   "Could God manufacture a deck so high, that even he could not upper deck it?",
   "If you've got a big thirst, and you're gay, reach for a cold, tall bottle of Schmitt's Gay.",
   "Rub icy hot on your butt cheeks, for a heated toilet seat feel on a budget.",
-].map( (v, i) => `PatFact #${i+1}: ${v} _#justpatfactthings_`);
+];
+
+module.exports.facts = (event, context, callback) => {
+
+  const options = {
+    TableName: "FactsTable",
+  };
+
+  exports.fetchFact(options)(callback)
+
+  // exports.addFact(options)({
+  //   fact: "Sucka MC Bust cap in dey ass",
+  //   author: "Aaron",
+  // })(callback);
+
+
+
+
+
+
+
+  // // Add the entire defaultFactArray
+  // let count = 0;
+  // function cb(err, data) {
+  //   count++;
+  //   if (count > defaultFactArray.length) callback(null, "DONE");
+  // }
+
+  // defaultFactArray.forEach( fact => exports.addFact(options)({
+  //   fact: fact,
+  //   author: "Aaron",
+  // })(cb));
+};
+
+
+// Main API functions
+module.exports.fetchFact = options => cb => {
+  fetch(options)((err, data) => {
+    const item = data.Items[Math.floor( Math.random()*data.Items.length )];
+    const key = { Key: { fact: item.fact } };
+    updateHits(Object.assign({}, options, key))((err, data) => {
+      cb(err, `PatFact #${item.number}: ${item.fact} _#justpatfactthings_`);
+    });
+  });
+};
+
+module.exports.addFact = options => ({ fact, author }) => cb => {
+  fetch(options)((err, data) => {
+    const count = data.Count;
+    const item = Object.assign({}, options, {
+      Item: {
+        fact,
+        author,
+        number: count+1,
+        hits: 0,
+        added: Date.now(),
+      },
+    });
+    put(Object.assign({}, options, item))(cb);
+  });
+};
+
+
+// Convenience functions
+function fetch(options) {
+  return cb => dynamoDb.scan(options, (err, data) => cb(err, data));
+}
+
+function put(options) {
+  return cb => dynamoDb.put(options, (err, data) => cb(err, !err && data ? "SUCCESS" : "ERROR"));
+}
+
+function updateHits(options) {
+  // increments the hits property atomically
+  const increment = Object.assign({}, options, {
+    // options should include Key: { fact: <<fact text>> }
+    UpdateExpression: "set hits = hits + :val",
+    ExpressionAttributeValues:{
+        ":val":1
+    },
+    ReturnValues:"UPDATED_NEW",
+  });
+  return cb => dynamoDb.update(increment, (err, data) => cb(err, data));
+}
 
 module.exports.getFact = (event, context, callback) => {
+  const index = Math.floor( Math.random()*defaultFactArray.length);
+  const fact = defaultFactArray[index];
   const response = {
     statusCode: 200,
     body: JSON.stringify({
-      text: factArray[Math.floor( Math.random()*factArray.length )],
+      text: `PatFact ${index+1}: ${fact} _#justpatfactthings_`,
       response_type: "in_channel",
     }),
   };
-
   callback(null, response);
-
-  // Use this code if you don't use the http event with the LAMBDA-PROXY integration
-  // callback(null, { message: 'Go Serverless v1.0! Your function executed successfully!', event });
 };

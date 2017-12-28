@@ -55,11 +55,18 @@ provider:
 #    - exclude-me-dir/**
 
 functions:
-  facts:
+  factsApi:
+    handler: patfacts.facts
+    events:
+      - http:
+          path: patfacts/facts
+          method: post
+  # deprecated
+  getFact:
     handler: patfacts.getFact
     events:
       - http:
-          path: patfacts/fact
+          path: patfacts/get-fact
           method: post
 #    The following are a few example events you can configure
 #    NOTE: Please make sure to change your handler code to work with those events
@@ -105,3 +112,22 @@ functions:
 #     NewOutput:
 #       Description: "Description for the output"
 #       Value: "Some output value"
+resources:
+  Resources:
+    FactsTable:
+      Type: AWS::DynamoDB::Table
+      Properties:
+        TableName: FactsTable
+        AttributeDefinitions:
+          - AttributeName: fact
+            AttributeType: S
+          - AttributeName: hits
+            AttributeType: N
+        KeySchema:
+          - AttributeName: fact
+            KeyType: HASH
+          - AttributeName: hits
+            KeyType: RANGE
+        ProvisionedThroughput:
+          ReadCapacityUnits: 1
+          WriteCapacityUnits: 1

@@ -1,0 +1,15 @@
+{
+  "name": "patfacts",
+  "version": "1.0.0",
+  "description": "",
+  "main": "patfacts.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "aws-sdk": "^2.175.0",
+    "highland": "^2.11.1"
+  }
+}
