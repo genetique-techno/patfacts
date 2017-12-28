@@ -2,6 +2,7 @@
 const AWS = require("aws-sdk");
 AWS.config.update({ region: process.env.AWS_DEFAULT_REGION });
 const dynamoDb = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
+const qs = require("querystring");
 
 const defaultFactArray = [
   "[belching sound followed by silent fart that melts your skin]...That was you.",
@@ -42,18 +43,26 @@ module.exports.facts = (event, context, callback) => {
     TableName: "FactsTable",
   };
 
-  exports.fetchFact(options)(callback)
+  const body = qs.parse(event.body) || {};
+  const text = body["text"] || "";
+  const command = text.split(" ")[0] || "get";
 
-  // exports.addFact(options)({
-  //   fact: "Sucka MC Bust cap in dey ass",
-  //   author: "Aaron",
-  // })(callback);
-
-
-
-
-
-
+  switch (command) {
+    case "add":
+      const parsed = text.match(/"(.*?)"/);
+      if (parsed && parsed[0]) {
+        const text = parsed[0].replace(/"*/g, "");
+        exports.addFact(options)({
+          fact: text,
+          author: body["user_name"] || "",
+        })(callback);
+      } else {
+        response(callback, { text: "the fuck you SAYIN!", type: "ephemeral" });
+      }
+      break;
+    default:
+      exports.fetchFact(options)(callback);
+  }
 
   // // Add the entire defaultFactArray
   // let count = 0;
@@ -61,9 +70,9 @@ module.exports.facts = (event, context, callback) => {
   //   count++;
   //   if (count > defaultFactArray.length) callback(null, "DONE");
   // }
-
-  // defaultFactArray.forEach( fact => exports.addFact(options)({
+  // defaultFactArray.forEach( (fact, index) => exports.addFact(options)({
   //   fact: fact,
+  //   number: index+1,
   //   author: "Aaron",
   // })(cb));
 };
@@ -72,10 +81,20 @@ module.exports.facts = (event, context, callback) => {
 // Main API functions
 module.exports.fetchFact = options => cb => {
   fetch(options)((err, data) => {
+
+    if (!data.Items.length) return response(cb, { text: "No PatFacts to fetch :(", type: "ephemeral" });
+
     const item = data.Items[Math.floor( Math.random()*data.Items.length )];
+
     const key = { Key: { fact: item.fact } };
     updateHits(Object.assign({}, options, key))((err, data) => {
-      cb(err, `PatFact #${item.number}: ${item.fact} _#justpatfactthings_`);
+      cb(err, {
+        statusCode: 200,
+        body: JSON.stringify({
+          text: `PatFact #${item.number}: ${item.fact}  _#justpatfactthings_`,
+          response_type: "in_channel",
+        }),
+      });
     });
   });
 };
@@ -92,14 +111,14 @@ module.exports.addFact = options => ({ fact, author }) => cb => {
         added: Date.now(),
       },
     });
-    put(Object.assign({}, options, item))(cb);
+    put(Object.assign({}, options, item))((err, data) => response(cb, {text: `PatFact #${count+1} added by \`${author}\`: ${fact}`, type: "ephemeral" }) );
   });
 };
 
 
 // Convenience functions
 function fetch(options) {
-  return cb => dynamoDb.scan(options, (err, data) => cb(err, data));
+  return cb => dynamoDb.scan(options, cb);
 }
 
 function put(options) {
@@ -119,6 +138,18 @@ function updateHits(options) {
   return cb => dynamoDb.update(increment, (err, data) => cb(err, data));
 }
 
+function response(cb, { text, type }) {
+  cb(null, {
+    statusCode: 200,
+    body: JSON.stringify({
+      text: text,
+      response_type: type,
+    }),
+  });
+}
+
+
+// DEPRECATED
 module.exports.getFact = (event, context, callback) => {
   const index = Math.floor( Math.random()*defaultFactArray.length);
   const fact = defaultFactArray[index];
