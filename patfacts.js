@@ -4,6 +4,124 @@ AWS.config.update({ region: process.env.AWS_DEFAULT_REGION });
 const dynamoDb = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
 const qs = require("querystring");
 
+module.exports.facts = (event, context, callback) => {
+
+  const options = {
+    TableName: "FactsTable",
+  };
+
+  const body = qs.parse(event.body) || {};
+  let text = body["text"] || "";
+  const command = text.split(" ")[0] || "get";
+  let parsed;
+
+  switch (command) {
+
+    case "add":
+      parsed = text.match(/"(.*?)"/);
+      if (parsed && parsed[0]) {
+        text = parsed[0].replace(/"*/g, "");
+        exports.addFact(options)({
+          fact: text,
+          author: body["user_name"] || "",
+        })(callback);
+      } else {
+        response(callback, { text: "the fuck you SAYIN!", type: "ephemeral" });
+      }
+      break;
+
+    case "show":
+      parsed = text.split(" ");
+      if (parsed.length > 1 && Number(parsed[1])) {
+        const number = parseInt(parsed[1]);
+        const params = {
+          ExpressionAttributeValues: {
+            ":factNumber": {
+              N: ""+number
+            }
+          },
+          FilterExpression: "number = :factNumber",
+        };
+        console.log(params);
+        exports.fetchFact(options)(params)(callback);
+      } else {
+        response(callback, { text: "the fuck you SAYIN!", type: "ephemeral" });
+      }
+      break;
+
+    default:
+      exports.fetchFact(options)()(callback);
+  }
+};
+
+
+// Main API functions
+module.exports.fetchFact = options => params => cb => {
+  dynamoDb.scan(Object.assign({}, options, params), (err, data) => {
+    console.log(err);
+    if (!data.Items.length) return response(cb, { text: "No PatFacts to fetch :(", type: "ephemeral" });
+
+    const item = data.Items[Math.floor( Math.random()*data.Items.length )];
+
+    const key = { Key: { fact: item.fact } };
+    updateHits(Object.assign({}, options, key))((err, data) => response(cb, {text: `PatFact #${item.number}: ${item.fact}  _#justpatfactthings_`, type: "in_channel"}));
+  });
+};
+
+module.exports.addFact = options => ({ fact, author }) => cb => {
+  dynamoDb.scan(options, (err, data) => {
+    const count = data.Count;
+    const item = Object.assign({}, options, {
+      Item: {
+        fact,
+        author,
+        number: count+1,
+        hits: 0,
+        added: Date.now(),
+      },
+    });
+    dynamoDb.put(Object.assign({}, options, item), (err, data) => response(cb, {text: `PatFact #${count+1} added by \`${author}\`: ${fact}`, type: "ephemeral" }) );
+  });
+};
+
+
+// Convenience functions
+function updateHits(options) {
+  // increments the hits property atomically
+  const increment = Object.assign({}, options, {
+    // options should include Key: { fact: <<fact text>> }
+    UpdateExpression: "set hits = hits + :val",
+    ExpressionAttributeValues:{
+        ":val":1
+    },
+    ReturnValues:"UPDATED_NEW",
+  });
+  return cb => dynamoDb.update(increment, (err, data) => cb(err, data));
+}
+
+function response(cb, { text, type }) {
+  cb(null, {
+    statusCode: 200,
+    body: JSON.stringify({
+      text: text,
+      response_type: type,
+    }),
+  });
+}
+
+function addAllDefaultFacts(callback) {
+  let count = 0;
+  function cb(err, data) {
+    count++;
+    if (count > defaultFactArray.length) callback(null, "DONE");
+  }
+  defaultFactArray.forEach( (fact, index) => exports.addFact(options)({
+    fact: fact,
+    number: index+1,
+    author: "Aaron",
+  })(cb));
+}
+
 const defaultFactArray = [
   "[belching sound followed by silent fart that melts your skin]...That was you.",
   "Shoving an 8 inch dildo directly up your asshole will result in said dildo replacing your actual penis.",
@@ -36,129 +154,3 @@ const defaultFactArray = [
   "If you've got a big thirst, and you're gay, reach for a cold, tall bottle of Schmitt's Gay.",
   "Rub icy hot on your butt cheeks, for a heated toilet seat feel on a budget.",
 ];
-
-module.exports.facts = (event, context, callback) => {
-
-  const options = {
-    TableName: "FactsTable",
-  };
-
-  const body = qs.parse(event.body) || {};
-  const text = body["text"] || "";
-  const command = text.split(" ")[0] || "get";
-
-  switch (command) {
-    case "add":
-      const parsed = text.match(/"(.*?)"/);
-      if (parsed && parsed[0]) {
-        const text = parsed[0].replace(/"*/g, "");
-        exports.addFact(options)({
-          fact: text,
-          author: body["user_name"] || "",
-        })(callback);
-      } else {
-        response(callback, { text: "the fuck you SAYIN!", type: "ephemeral" });
-      }
-      break;
-    default:
-      exports.fetchFact(options)(callback);
-  }
-
-  // // Add the entire defaultFactArray
-  // let count = 0;
-  // function cb(err, data) {
-  //   count++;
-  //   if (count > defaultFactArray.length) callback(null, "DONE");
-  // }
-  // defaultFactArray.forEach( (fact, index) => exports.addFact(options)({
-  //   fact: fact,
-  //   number: index+1,
-  //   author: "Aaron",
-  // })(cb));
-};
-
-
-// Main API functions
-module.exports.fetchFact = options => cb => {
-  fetch(options)((err, data) => {
-
-    if (!data.Items.length) return response(cb, { text: "No PatFacts to fetch :(", type: "ephemeral" });
-
-    const item = data.Items[Math.floor( Math.random()*data.Items.length )];
-
-    const key = { Key: { fact: item.fact } };
-    updateHits(Object.assign({}, options, key))((err, data) => {
-      cb(err, {
-        statusCode: 200,
-        body: JSON.stringify({
-          text: `PatFact #${item.number}: ${item.fact}  _#justpatfactthings_`,
-          response_type: "in_channel",
-        }),
-      });
-    });
-  });
-};
-
-module.exports.addFact = options => ({ fact, author }) => cb => {
-  fetch(options)((err, data) => {
-    const count = data.Count;
-    const item = Object.assign({}, options, {
-      Item: {
-        fact,
-        author,
-        number: count+1,
-        hits: 0,
-        added: Date.now(),
-      },
-    });
-    put(Object.assign({}, options, item))((err, data) => response(cb, {text: `PatFact #${count+1} added by \`${author}\`: ${fact}`, type: "ephemeral" }) );
-  });
-};
-
-
-// Convenience functions
-function fetch(options) {
-  return cb => dynamoDb.scan(options, cb);
-}
-
-function put(options) {
-  return cb => dynamoDb.put(options, (err, data) => cb(err, !err && data ? "SUCCESS" : "ERROR"));
-}
-
-function updateHits(options) {
-  // increments the hits property atomically
-  const increment = Object.assign({}, options, {
-    // options should include Key: { fact: <<fact text>> }
-    UpdateExpression: "set hits = hits + :val",
-    ExpressionAttributeValues:{
-        ":val":1
-    },
-    ReturnValues:"UPDATED_NEW",
-  });
-  return cb => dynamoDb.update(increment, (err, data) => cb(err, data));
-}
-
-function response(cb, { text, type }) {
-  cb(null, {
-    statusCode: 200,
-    body: JSON.stringify({
-      text: text,
-      response_type: type,
-    }),
-  });
-}
-
-
-// DEPRECATED
-module.exports.getFact = (event, context, callback) => {
-  const index = Math.floor( Math.random()*defaultFactArray.length);
-  const fact = defaultFactArray[index];
-  const response = {
-    statusCode: 200,
-    body: JSON.stringify({
-      text: `PatFact ${index+1}: ${fact} _#justpatfactthings_`,
-      response_type: "in_channel",
-    }),
-  };
-  callback(null, response);
-};
