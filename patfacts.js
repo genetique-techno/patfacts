@@ -3,6 +3,8 @@ const AWS = require("aws-sdk");
 AWS.config.update({ region: process.env.AWS_DEFAULT_REGION });
 const dynamoDb = new AWS.DynamoDB.DocumentClient({apiVersion: '2012-08-10'});
 const qs = require("querystring");
+const h = require("highland");
+const r = require("ramda");
 
 module.exports.facts = (event, context, callback) => {
 
@@ -10,9 +12,15 @@ module.exports.facts = (event, context, callback) => {
     TableName: "FactsTable",
   };
 
-  const body = qs.parse(event.body) || {};
-  let text = body["text"] || "";
-  const command = text.split(" ")[0] || "get";
+  // get the command from the incoming event
+  const command = r.compose(
+    r.either(
+      r.compose( r.head, r.split(" ") ),
+      r.always("get")),
+    r.propOr("", "text"),
+    qs.parse,
+    r.prop("body"))(event);
+
   let parsed;
 
   switch (command) {
