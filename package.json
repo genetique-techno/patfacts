@@ -10,8 +10,11 @@
   "license": "ISC",
   "dependencies": {
     "aws-sdk": "^2.175.0",
+    "body-parser": "^1.18.2",
+    "express": "^4.16.2",
     "highland": "^2.11.1",
     "mocha": "^5.0.0",
-    "ramda": "^0.25.0"
+    "ramda": "^0.25.0",
+    "serverless-http": "^1.5.2"
   }
 }

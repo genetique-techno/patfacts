@@ -33,17 +33,10 @@ provider:
       Resource: "arn:aws:dynamodb:us-east-1:047040515012:table/FactsTable"
 functions:
   factsApi:
-    handler: patfacts.facts
+    handler: lib/patfacts.facts
     events:
       - http:
           path: patfacts/facts
-          method: post
-  # deprecated
-  getFact:
-    handler: patfacts.getFact
-    events:
-      - http:
-          path: patfacts/get-fact
           method: post
 resources:
   Resources:
